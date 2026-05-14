@@ -1,226 +1,270 @@
-/* VIRO — interactions
-   ------------------------------------------------------------ */
+/* =========================================================
+   VIRO — script.js v2
+   Reveal animations, sticky nav, parallax-lite, counters,
+   subscribe toggles, waitlist modal.
+   ========================================================= */
+
 (function () {
   'use strict';
 
-  const $  = (sel, ctx = document) => ctx.querySelector(sel);
-  const $$ = (sel, ctx = document) => Array.from(ctx.querySelectorAll(sel));
+  const reduceMotion = window.matchMedia &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  // ---------- year ----------
-  const yearEl = $('#year');
+  // ---------- Year ----------
+  const yearEl = document.getElementById('year');
   if (yearEl) yearEl.textContent = new Date().getFullYear();
 
-  // ---------- nav: scroll state ----------
-  const nav = $('#nav');
-  if (nav) {
-    const onScroll = () => nav.classList.toggle('is-scrolled', window.scrollY > 8);
-    onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
-  }
+  // ---------- Sticky nav scroll state ----------
+  const nav = document.getElementById('nav');
+  const onScroll = () => {
+    if (!nav) return;
+    nav.classList.toggle('is-scrolled', window.scrollY > 24);
+  };
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
 
-  // ---------- nav: mobile burger ----------
-  const burger = $('#navBurger');
-  if (burger && nav) {
-    burger.addEventListener('click', () => {
-      const open = nav.classList.toggle('is-open');
-      burger.setAttribute('aria-expanded', String(open));
-    });
-    // close on link tap
-    $$('.nav__links a').forEach(a =>
-      a.addEventListener('click', () => {
-        nav.classList.remove('is-open');
-        burger.setAttribute('aria-expanded', 'false');
-      })
-    );
-  }
+  // ---------- Mobile menu ----------
+  const burger = document.getElementById('navBurger');
+  const navMobile = document.getElementById('navMobile');
+  const closeMobile = () => {
+    burger?.classList.remove('is-open');
+    burger?.setAttribute('aria-expanded', 'false');
+    navMobile?.classList.remove('is-open');
+    navMobile?.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('no-scroll');
+  };
+  burger?.addEventListener('click', () => {
+    const open = !burger.classList.contains('is-open');
+    burger.classList.toggle('is-open', open);
+    burger.setAttribute('aria-expanded', String(open));
+    navMobile?.classList.toggle('is-open', open);
+    navMobile?.setAttribute('aria-hidden', String(!open));
+    document.body.classList.toggle('no-scroll', open);
+  });
+  navMobile?.querySelectorAll('a').forEach(a => a.addEventListener('click', closeMobile));
 
-  // ---------- reveal on scroll ----------
-  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const reveals = $$('.reveal');
-  if (reveals.length && 'IntersectionObserver' in window && !prefersReduced) {
-    const io = new IntersectionObserver(entries => {
-      entries.forEach(entry => {
+  // ---------- Reveal on scroll ----------
+  const revealEls = document.querySelectorAll('.reveal');
+  if ('IntersectionObserver' in window && !reduceMotion) {
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((entry, idx) => {
         if (entry.isIntersecting) {
-          entry.target.classList.add('is-in');
-          io.unobserve(entry.target);
+          const el = entry.target;
+          // Stagger siblings inside same parent
+          const siblings = Array.from(el.parentElement?.children || []).filter(c => c.classList.contains('reveal'));
+          const i = siblings.indexOf(el);
+          const delay = Math.min(i, 6) * 80;
+          el.style.transitionDelay = delay + 'ms';
+          el.classList.add('is-in');
+          io.unobserve(el);
         }
       });
     }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
-    reveals.forEach(el => io.observe(el));
+    revealEls.forEach(el => io.observe(el));
   } else {
-    reveals.forEach(el => el.classList.add('is-in'));
+    revealEls.forEach(el => el.classList.add('is-in'));
   }
 
-  // ---------- count-up stats ----------
-  const counters = $$('.js-count');
-  if (counters.length && 'IntersectionObserver' in window && !prefersReduced) {
-    const animateCount = (el) => {
-      const to = parseFloat(el.dataset.to || '0');
-      const finalLabel = el.dataset.final ? parseFloat(el.dataset.final) : to;
-      const decimals = parseInt(el.dataset.decimals || '0', 10);
-      const dur = 1500;
-      const start = performance.now();
-      const initial = 0;
-      const target = finalLabel;
-      const easeOut = t => 1 - Math.pow(1 - t, 3);
-      const step = (now) => {
-        const t = Math.min(1, (now - start) / dur);
-        const val = initial + (target - initial) * easeOut(t);
-        el.textContent = decimals ? val.toFixed(decimals) : Math.round(val).toLocaleString();
-        if (t < 1) requestAnimationFrame(step);
-      };
-      requestAnimationFrame(step);
+  // ---------- Count-up stats ----------
+  const counters = document.querySelectorAll('[data-count]');
+  const animateCount = (el) => {
+    const target = parseInt(el.dataset.count, 10) || 0;
+    const duration = 1600;
+    const start = performance.now();
+    const startVal = 0;
+    const format = (n) => n >= 1000 ? n.toLocaleString('en-US') : String(n);
+    const step = (now) => {
+      const t = Math.min((now - start) / duration, 1);
+      // ease out
+      const eased = 1 - Math.pow(1 - t, 3);
+      const val = Math.round(startVal + (target - startVal) * eased);
+      el.textContent = format(val);
+      if (t < 1) requestAnimationFrame(step);
+      else el.textContent = format(target);
     };
-    const cio = new IntersectionObserver(entries => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          animateCount(entry.target);
-          cio.unobserve(entry.target);
-        }
+    requestAnimationFrame(step);
+  };
+  if ('IntersectionObserver' in window && !reduceMotion) {
+    const cio = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) { animateCount(e.target); cio.unobserve(e.target); }
       });
-    }, { threshold: 0.5 });
+    }, { threshold: 0.4 });
     counters.forEach(c => cio.observe(c));
   } else {
-    counters.forEach(c => {
-      const finalLabel = c.dataset.final ? parseFloat(c.dataset.final) : parseFloat(c.dataset.to || '0');
-      const decimals = parseInt(c.dataset.decimals || '0', 10);
-      c.textContent = decimals ? finalLabel.toFixed(decimals) : Math.round(finalLabel).toLocaleString();
-    });
+    counters.forEach(c => { c.textContent = parseInt(c.dataset.count, 10).toLocaleString('en-US'); });
   }
 
-  // ---------- quiz ----------
-  (function quiz() {
-    const card = $('#quizCard');
-    if (!card) return;
-
-    const steps = $$('.quiz__step', card);
-    const total = steps.filter(s => s.dataset.step !== 'done').length;
-    const bar   = $('#quizBar');
-    const stepN = $('#quizStep');
-    const totalN= $('#quizTotal');
-    const pctN  = $('#quizPct');
-    const back  = $('#quizBack');
-    const form  = $('#quizForm');
-
-    if (totalN) totalN.textContent = total;
-    const history = [];
-    let current = 1;
-
-    function show(stepKey) {
-      steps.forEach(s => s.classList.toggle('is-active', String(s.dataset.step) === String(stepKey)));
-      const isDone = stepKey === 'done';
-      const idx = isDone ? total : Number(stepKey);
-      const pct = isDone ? 100 : Math.round((idx / total) * 100);
-      if (bar)   bar.style.width = pct + '%';
-      if (stepN) stepN.textContent = isDone ? total : idx;
-      if (pctN)  pctN.textContent  = pct + '%';
-      if (back)  back.hidden = history.length === 0 || isDone;
-      current = stepKey;
-    }
-
-    $$('.quiz__opt', card).forEach(btn => {
-      btn.addEventListener('click', () => {
-        const next = btn.dataset.next;
-        if (!next) return;
-        history.push(current);
-        show(next);
+  // ---------- Parallax-lite ----------
+  const parallaxEls = document.querySelectorAll('[data-parallax]');
+  if (parallaxEls.length && !reduceMotion) {
+    let ticking = false;
+    const update = () => {
+      const vh = window.innerHeight;
+      parallaxEls.forEach(el => {
+        const speed = parseFloat(el.dataset.parallax) || 0.15;
+        const rect = el.getBoundingClientRect();
+        const center = rect.top + rect.height / 2 - vh / 2;
+        const offset = center * -speed;
+        el.style.transform = `translate3d(0, ${offset.toFixed(2)}px, 0)`;
       });
-    });
-
-    if (back) {
-      back.addEventListener('click', () => {
-        const prev = history.pop();
-        if (prev != null) show(prev);
-      });
-    }
-
-    if (form) {
-      form.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const email = $('#quizEmail').value.trim();
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-          $('#quizEmail').focus();
-          return;
-        }
-        // TODO: POST to backend / Klaviyo / Shopify customer
-        try {
-          const waitlist = JSON.parse(localStorage.getItem('viro_waitlist') || '[]');
-          waitlist.push({ email, source: 'quiz', ts: Date.now() });
-          localStorage.setItem('viro_waitlist', JSON.stringify(waitlist));
-        } catch (_) { /* noop */ }
-        show('done');
-      });
-    }
-
-    show(1);
-  })();
-
-  // ---------- checkout modal ----------
-  (function modal() {
-    const modal = $('#modalCheckout');
-    if (!modal) return;
-    const form = $('#waitlistForm');
-    const success = $('#waitlistSuccess');
-
-    function open() {
-      modal.classList.add('is-open');
-      modal.setAttribute('aria-hidden', 'false');
-      document.body.style.overflow = 'hidden';
-      const input = $('#waitlistEmail');
-      if (input) setTimeout(() => input.focus(), 80);
-    }
-    function close() {
-      modal.classList.remove('is-open');
-      modal.setAttribute('aria-hidden', 'true');
-      document.body.style.overflow = '';
-    }
-
-    // Intercept any link whose href ends with #checkout-coming-soon OR has .js-checkout
-    document.addEventListener('click', (e) => {
-      const a = e.target.closest('a');
-      if (!a) return;
-      const href = a.getAttribute('href') || '';
-      if (a.classList.contains('js-checkout') || href.endsWith('#checkout-coming-soon')) {
-        e.preventDefault();
-        open();
+      ticking = false;
+    };
+    const onScrollParallax = () => {
+      if (!ticking) {
+        requestAnimationFrame(update);
+        ticking = true;
       }
-    });
+    };
+    window.addEventListener('scroll', onScrollParallax, { passive: true });
+    update();
+  }
 
-    modal.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', close));
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && modal.classList.contains('is-open')) close();
-    });
-
-    if (form) {
-      form.addEventListener('submit', (e) => {
+  // ---------- Subscribe / one-time pill toggle ----------
+  document.querySelectorAll('.product__toggle').forEach(group => {
+    const pills = group.querySelectorAll('.pill');
+    pills.forEach(p => {
+      p.addEventListener('click', (e) => {
         e.preventDefault();
-        const input = $('#waitlistEmail');
-        const email = input.value.trim();
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-          input.focus();
-          input.style.borderColor = '#c9a84c';
-          return;
+        pills.forEach(x => x.classList.remove('pill--on'));
+        p.classList.add('pill--on');
+        const mode = p.dataset.mode;
+        const card = group.closest('.product');
+        const priceNow = card?.querySelector('.product__price-now');
+        const priceSub = card?.querySelector('.product__price-sub');
+        if (!priceNow || !priceSub) return;
+
+        // First time: stash originals
+        if (!priceNow.dataset.original) {
+          priceNow.dataset.original = priceNow.textContent;
+          priceSub.dataset.original = priceSub.textContent;
         }
-        try {
-          const waitlist = JSON.parse(localStorage.getItem('viro_waitlist') || '[]');
-          waitlist.push({ email, source: 'modal', ts: Date.now() });
-          localStorage.setItem('viro_waitlist', JSON.stringify(waitlist));
-        } catch (_) { /* noop */ }
-        if (success) success.hidden = false;
-        form.hidden = true;
+        const original = priceNow.dataset.original;
+        const num = parseFloat(original.replace(/[^0-9.]/g, '')) || 0;
+        if (mode === 'sub') {
+          const discounted = (num * 0.8).toFixed(2);
+          priceNow.textContent = '$' + discounted;
+          priceSub.textContent = 'Ships every 30 days · cancel anytime';
+        } else {
+          priceNow.textContent = priceSub.dataset.original ? original : original;
+          priceSub.textContent = priceSub.dataset.original;
+        }
       });
-    }
-  })();
-
-  // ---------- testimonial cards: keyboard activate ----------
-  $$('.vcard__media').forEach(card => {
-    card.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        // Hook for future modal/video player
-        card.click();
-      }
     });
   });
+
+  // ---------- Waitlist modal ----------
+  const modal = document.getElementById('checkoutModal');
+  const successMsg = document.getElementById('waitlistSuccess');
+  const openModal = () => {
+    if (!modal) return;
+    modal.classList.add('is-open');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('no-scroll');
+    setTimeout(() => modal.querySelector('input[type="email"]')?.focus(), 50);
+  };
+  const closeModal = () => {
+    if (!modal) return;
+    modal.classList.remove('is-open');
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('no-scroll');
+    successMsg?.setAttribute('hidden', '');
+    const form = document.getElementById('waitlistForm');
+    form?.reset();
+    form?.querySelector('button[type="submit"]')?.removeAttribute('disabled');
+  };
+
+  document.addEventListener('click', (e) => {
+    const trigger = e.target.closest('.js-checkout');
+    if (trigger) {
+      e.preventDefault();
+      openModal();
+      return;
+    }
+    if (e.target.closest('.js-modal-close')) {
+      e.preventDefault();
+      closeModal();
+    }
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modal?.classList.contains('is-open')) closeModal();
+  });
+
+  // ---------- Waitlist persistence ----------
+  const saveEmail = (email) => {
+    try {
+      const key = 'viro_waitlist';
+      const raw = localStorage.getItem(key);
+      const list = raw ? JSON.parse(raw) : [];
+      const entry = { email, ts: Date.now() };
+      if (!list.some(e => e.email === email)) list.push(entry);
+      localStorage.setItem(key, JSON.stringify(list));
+    } catch (_) { /* storage blocked, ignore */ }
+  };
+
+  // Modal form
+  const waitForm = document.getElementById('waitlistForm');
+  waitForm?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const input = waitForm.querySelector('input[type="email"]');
+    const email = (input?.value || '').trim();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      input?.focus();
+      return;
+    }
+    saveEmail(email);
+    const btn = waitForm.querySelector('button[type="submit"]');
+    btn?.setAttribute('disabled', '');
+    successMsg?.removeAttribute('hidden');
+  });
+
+  // Final CTA form
+  const finalForm = document.getElementById('finalCtaForm');
+  finalForm?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const input = finalForm.querySelector('input[type="email"]');
+    const email = (input?.value || '').trim();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      input?.focus();
+      return;
+    }
+    saveEmail(email);
+    input.value = '';
+    openModal();
+    if (successMsg) {
+      successMsg.removeAttribute('hidden');
+      successMsg.textContent = "You're in. Welcome to VIRO. ⟁";
+    }
+  });
+
+  // ---------- Smooth in-page anchors (account for sticky nav) ----------
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', (e) => {
+      const href = a.getAttribute('href');
+      if (!href || href === '#' || href.length < 2) return;
+      const target = document.querySelector(href);
+      if (!target) return;
+      e.preventDefault();
+      const top = target.getBoundingClientRect().top + window.scrollY - 60;
+      window.scrollTo({ top, behavior: reduceMotion ? 'auto' : 'smooth' });
+    });
+  });
+
+  // ---------- Hero product subtle tilt on pointer move ----------
+  const heroProduct = document.querySelector('.hero__product');
+  if (heroProduct && !reduceMotion && window.matchMedia('(pointer: fine)').matches) {
+    const img = heroProduct.querySelector('.hero__product-img');
+    if (img) {
+      heroProduct.addEventListener('pointermove', (e) => {
+        const rect = heroProduct.getBoundingClientRect();
+        const x = (e.clientX - rect.left) / rect.width - 0.5;
+        const y = (e.clientY - rect.top) / rect.height - 0.5;
+        img.style.transform = `perspective(900px) rotateY(${x * 6}deg) rotateX(${-y * 6}deg)`;
+      });
+      heroProduct.addEventListener('pointerleave', () => {
+        img.style.transform = 'perspective(900px) rotateY(0deg) rotateX(0deg)';
+      });
+    }
+  }
 
 })();
